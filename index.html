@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="bft-icon.png">
+  <link rel="manifest" href="manifest.json">
+  <title>Brainfuck Converter</title>
+  <style>
+    body {
+      background: #fff;
+      color: #333;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 2rem;
+      min-height: 100vh;
+      box-sizing: border-box;
+    }
+    textarea, input {
+      padding: 0.75rem;
+      font-family: inherit;
+      background: #fff;
+      color: #333;
+      border: none;
+      border-radius: 15px;
+      box-shadow: inset 5px 5px 10px rgba(0,0,0,0.1), inset -5px -5px 10px rgba(255,255,255,0.7);
+      box-sizing: border-box;
+    }
+    textarea {
+      caret-color: #555;
+      width: 100%;
+      margin-top: 1rem;
+      resize: none;
+    }
+    button {
+      padding: 0.75rem;
+      font-family: inherit;
+      background: #fff;
+      color: #333;
+      border: none;
+      border-radius: 15px;
+      box-shadow: 5px 5px 10px rgba(0,0,0,0.1), -5px -5px 10px rgba(255,255,255,0.7);
+      box-sizing: border-box;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    button:hover {
+      background: #f5f5f5;
+      box-shadow: 5px 5px 10px rgba(0,0,0,0.15), -5px -5px 10px rgba(255,255,255,0.8);
+    }
+    button:active {
+      box-shadow: inset 5px 5px 10px rgba(0,0,0,0.2), inset -5px -5px 10px rgba(255,255,255,0.5);
+    }
+    button:focus {
+      outline: none;
+    }
+    .button-group, .decode-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .button-group button, .decode-buttons button {
+      flex: 1 1 22%;
+    }
+    h1 {
+      font-weight: 600;
+      font-size: 2rem;
+      color: #333;
+      text-align: center;
+      margin-bottom: 2rem;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    }
+    label {
+      font-weight: 500;
+      color: #555;
+      display: block;
+      margin-top: 1rem;
+    }
+    #char-count {
+      color: #777;
+    }
+    @media (max-width: 600px) {
+      textarea, input, button {
+        font-size: 16px;
+      }
+      .button-group, .decode-buttons {
+        flex-direction: column;
+      }
+      .button-group button, .decode-buttons button {
+        flex: 1 1 100%;
+      }
+      h1 {
+        font-size: 1.5rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Brainfuck Converter</h1>
+  <label for="text">Eingabe <span id="char-count">0</span> Zeichen</label>
+  <textarea id="text" rows="7"></textarea>
+  <div class="button-group">
+    <button type="button" onclick="eraseInput()">Löschen</button>
+    <button type="button" onclick="convertToBrainfuck()">Zu Brainfuck</button>
+    <button type="button" onclick="toggleBase64(this)" id="base64Btn">Base64</button>
+    <button type="button" id="copyBtn" onclick="copyOutput()">Kopieren</button>
+  </div>
+  <textarea id="output" rows="7"></textarea>
+  <div class="decode-buttons">
+    <button type="button" onclick="eraseOutput()">Ausgabe löschen</button>
+    <button type="button" onclick="interpretFromOutput()">Dekodieren</button>
+    <button type="button" id="copyDecodeBtn" onclick="copyDecoded()">Dekodiert kopieren</button>
+  </div>
+
+  <script>
+    let useBase64 = false;
+
+    document.getElementById("text").addEventListener("input", () => {
+      updateCharCount();
+      convertToBrainfuck();
+    });
+
+    function updateCharCount() {
+      document.getElementById("char-count").textContent = document.getElementById("text").value.length;
+    }
+
+    function convertToBrainfuck() {
+      const text = document.getElementById("text").value;
+      let out = "";
+      let cur = 0;
+      for (let i = 0; i < text.length; i++) {
+        const target = text.charCodeAt(i);
+        const diff = target - cur;
+        if (diff > 0) out += "+".repeat(diff);
+        else if (diff < 0) out += "-".repeat(-diff);
+        out += ".";
+        cur = target;
+      }
+      document.getElementById("output").value = useBase64 ? btoa(out) : out;
+    }
+
+    function interpretFromOutput() {
+      let code = document.getElementById("output").value.trim();
+      if (isBase64(code)) code = atob(code);
+      const tape = new Array(30000).fill(0);
+      let ptr = 0, out = "", stack = [], pc = 0;
+      while (pc < code.length) {
+        const cmd = code[pc];
+        switch (cmd) {
+          case ">": ptr++; break;
+          case "<": ptr--; break;
+          case "+": tape[ptr] = (tape[ptr] + 1) % 256; break;
+          case "-": tape[ptr] = (tape[ptr] - 1 + 256) % 256; break;
+          case ".": out += String.fromCharCode(tape[ptr]); break;
+          case "[":
+            if (tape[ptr] === 0) {
+              let open = 1;
+              while (open > 0) {
+                pc++;
+                if (code[pc] === "[") open++;
+                if (code[pc] === "]") open--;
+              }
+            } else stack.push(pc);
+            break;
+          case "]":
+            if (tape[ptr] !== 0) pc = stack[stack.length - 1];
+            else stack.pop();
+            break;
+        }
+        pc++;
+      }
+      document.getElementById("text").value = out;
+      updateCharCount();
+      convertToBrainfuck();
+    }
+
+    function isBase64(str) {
+      try {
+        return btoa(atob(str)) === str;
+      } catch {
+        return false;
+      }
+    }
+
+    function toggleBase64(btn) {
+      useBase64 = !useBase64;
+      btn.blur();
+      convertToBrainfuck();
+    }
+
+    async function copyOutput() {
+      const val = document.getElementById("output").value;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(val);
+      } else {
+        document.getElementById("output").select();
+        document.execCommand("copy");
+      }
+      const btn = document.getElementById("copyBtn");
+      btn.blur();
+      btn.textContent = "Kopiert ✓";
+      setTimeout(() => { btn.textContent = "Kopieren"; }, 1500);
+    }
+
+    async function copyDecoded() {
+      const val = document.getElementById("text").value;
+      if (navigator.clipboard) {
+        await navigator.clipboard.writeText(val);
+      } else {
+        document.getElementById("text").select();
+        document.execCommand("copy");
+      }
+      const btn = document.getElementById("copyDecodeBtn");
+      btn.blur();
+      btn.textContent = "Kopiert ✓";
+      setTimeout(() => { btn.textContent = "Dekodiert kopieren"; }, 1500);
+    }
+
+    function eraseInput() {
+      document.getElementById("text").value = "";
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      updateCharCount();
+      convertToBrainfuck();
+    }
+
+    function eraseOutput() {
+      document.getElementById("output").value = "";
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      updateCharCount();
+    }
+
+    updateCharCount();
+  </script>
+</body>
+</html>
